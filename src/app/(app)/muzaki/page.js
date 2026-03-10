@@ -2,9 +2,9 @@
 import { useEffect, useState, useCallback } from 'react'
 import { useMasjid } from '@/hooks/useMasjid'
 import { formatRupiah, formatKg, formatTanggal, LABEL_JENIS, cn, getAnggotaDisplay } from '@/lib/utils'
-import { exportMuzakiToPDF } from '@/lib/export'
+import { exportMuzakiToPDF, exportMuzakiToExcel } from '@/lib/export'
 import toast from 'react-hot-toast'
-import { Plus, Search, FileDown, Pencil, Trash2, X, Users, ChevronLeft, ChevronRight, Wheat, Banknote, Gift, HandCoins, ChevronDown, ChevronUp } from 'lucide-react'
+import { Plus, Search, FileDown, Pencil, Trash2, X, Users, ChevronLeft, ChevronRight, Wheat, Banknote, Gift, HandCoins, ChevronDown, ChevronUp, FileSpreadsheet } from 'lucide-react'
 
 const PAGE_SIZE = 15
 
@@ -50,18 +50,38 @@ export default function MuzakiPage() {
     else toast.error('Gagal export', { id: tid })
   }
 
+  const handleExportExcel = async () => {
+    const tid = toast.loading('Membuat Excel...')
+    try {
+      const { data: all } = await db.from('muzaki').select('*').order('hari_ke').order('created_at')
+      const { data: pg }  = await db.from('pengaturan').select('*').single()
+      if (all && pg) { await exportMuzakiToExcel(all, pg); toast.success('Excel berhasil!', { id: tid }) }
+      else toast.error('Gagal export', { id: tid })
+    } catch(e) { toast.error('Gagal: ' + e.message, { id: tid }) }
+  }
+
   const totalPages = Math.ceil(total / PAGE_SIZE)
   const sumUang    = list.reduce((s, m) => s + (m.jumlah_uang || 0), 0)
   const sumBeras   = list.reduce((s, m) => s + (m.jumlah_beras || 0), 0)
   const sumInfak   = list.reduce((s, m) => s + (m.jumlah_infak || 0) + (m.infak_tambahan || 0), 0)
   const sumSadaqah = list.reduce((s, m) => s + (m.jumlah_sadaqah_uang || 0), 0)
 
+  if (!ready) return (
+    <div className="space-y-4">
+      <div className="flex items-start justify-between gap-3"><div className="skeleton h-7 w-36 rounded-lg"/><div className="flex gap-2"><div className="skeleton h-9 w-28 rounded-xl"/><div className="skeleton h-9 w-24 rounded-xl"/></div></div>
+      <div className="grid grid-cols-2 md:grid-cols-4 gap-2">{[...Array(4)].map((_,i)=><div key={i} className="card p-3 flex items-center gap-3"><div className="skeleton w-8 h-8 rounded-xl flex-shrink-0"/><div className="flex-1 space-y-1.5"><div className="skeleton h-3 w-12 rounded"/><div className="skeleton h-5 w-20 rounded"/></div></div>)}</div>
+      <div className="card p-3"><div className="skeleton h-10 rounded-xl"/></div>
+      <div className="card overflow-hidden"><div className="p-4 space-y-3">{[...Array(5)].map((_,i)=><div key={i} className="skeleton h-10 rounded"/>)}</div></div>
+    </div>
+  )
+
   return (
     <div className="space-y-4 animate-in">
       <div className="flex items-start justify-between gap-3">
         <div><h1 className="page-title">Data Muzaki</h1><p className="page-sub">{total} kepala keluarga terdaftar</p></div>
         <div className="flex gap-2 flex-shrink-0">
-          <button onClick={handleExport} className="btn-outline btn-sm"><FileDown className="w-3.5 h-3.5"/> Export PDF</button>
+          <button onClick={handleExport} className="btn-outline btn-sm"><FileDown className="w-3.5 h-3.5"/> PDF</button>
+          <button onClick={handleExportExcel} className="btn-outline btn-sm"><FileSpreadsheet className="w-3.5 h-3.5"/> Excel</button>
           <button onClick={() => setModal('add')} className="btn-primary btn-sm"><Plus className="w-3.5 h-3.5"/> Tambah</button>
         </div>
       </div>
@@ -158,7 +178,7 @@ function Divider({children}){return(<div className="divider mt-1"><span>{childre
 function MuzakiModal({data,pengaturan,db,onClose,onSuccess}){
   const { masjidId } = useMasjid()
   const isEdit=!!data; const bp=pengaturan?.beras_per_jiwa||2.5; const up=pengaturan?.nisab_zakat_uang||40000; const ip=pengaturan?.nominal_infak_per_jiwa||5000
-  const[form,setForm]=useState({nama_kepala_keluarga:data?.nama_kepala_keluarga||'',no_kk:data?.no_kk||'',rt:data?.rt||'',rw:data?.rw||'',jumlah_jiwa:data?.jumlah_jiwa||1,jumlah_sadaqah_uang:data?.jumlah_sadaqah_uang||0,jumlah_sadaqah_beras:data?.jumlah_sadaqah_beras||0,infak_tambahan:data?.infak_tambahan||0,tanggal_bayar:data?.tanggal_bayar||new Date().toISOString().split('T')[0],hari_ke:data?.hari_ke||1,keterangan:data?.keterangan||'',anggota_keluarga:(data?.anggota_keluarga||[]).join('\n')})
+  const[form,setForm]=useState({nama_kepala_keluarga:data?.nama_kepala_keluarga||'',no_kk:data?.no_kk||'',rt:data?.rt||(data?'':(pengaturan?.rt_default||'')),rw:data?.rw||(data?'':(pengaturan?.rw_default||'')),jumlah_jiwa:data?.jumlah_jiwa||1,jumlah_sadaqah_uang:data?.jumlah_sadaqah_uang||0,jumlah_sadaqah_beras:data?.jumlah_sadaqah_beras||0,infak_tambahan:data?.infak_tambahan||0,tanggal_bayar:data?.tanggal_bayar||new Date().toISOString().split('T')[0],hari_ke:data?.hari_ke||1,keterangan:data?.keterangan||'',anggota_keluarga:(data?.anggota_keluarga||[]).join('\n')})
   const[jiwaUang,setJiwaUang]=useState(()=>{if(!data)return 1;if(data.jenis_bayar==='beras')return 0;return data.jiwa_uang||(data.jenis_bayar==='uang'?data.jumlah_jiwa:Math.round((data.jumlah_uang||0)/up)||0)})
   const[jiwaBeras,setJiwaBeras]=useState(()=>{if(!data)return 0;return data.jiwa_beras||(data.jenis_bayar==='beras'?data.jumlah_jiwa:Math.round((data.jumlah_beras||0)/bp)||0)})
   const[jiwaInfak,setJiwaInfak]=useState(()=>data?.jiwa_infak||data?.jumlah_jiwa||1)

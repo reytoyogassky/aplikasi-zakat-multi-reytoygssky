@@ -3,7 +3,7 @@ import { useEffect, useState } from 'react'
 import { useMasjid } from '@/hooks/useMasjid'
 import { formatRupiah, formatKg, hitungDistribusi } from '@/lib/utils'
 import { BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, PieChart, Pie, Cell, Legend } from 'recharts'
-import { Users, Wheat, Banknote, Heart, TrendingUp, Gift, HandCoins, ChevronRight } from 'lucide-react'
+import { Users, Wheat, Banknote, Heart, Gift, HandCoins, ChevronRight } from 'lucide-react'
 import Link from 'next/link'
 
 const PIE_COLORS = ['#059669','#2563eb','#d97706','#dc2626']
@@ -75,9 +75,9 @@ export default function DashboardPage() {
       </div>
 
       <div className="grid grid-cols-3 gap-3">
-        <MiniCard icon={<TrendingUp className="w-4 h-4 text-primary-600"/>} label="Total Zakat" value={formatRupiah(dist?.total_zakat || 0)} bg="bg-primary-50 dark:bg-primary-950/20"/>
         <MiniCard icon={<HandCoins className="w-4 h-4 text-blue-600"/>} label="Total Infak" value={formatRupiah((dist?.total_infak || 0) + (lap?.total_infak_tambahan || 0))} bg="bg-blue-50 dark:bg-blue-950/20"/>
-        <MiniCard icon={<Gift className="w-4 h-4 text-purple-600"/>} label="Shodaqoh" value={formatRupiah(dist?.total_sadaqah || 0)} bg="bg-purple-50 dark:bg-purple-950/20"/>
+        <MiniCard icon={<Gift className="w-4 h-4 text-purple-600"/>} label="Shodaqoh Uang" value={formatRupiah(lap?.total_sadaqah_uang || 0)} bg="bg-purple-50 dark:bg-purple-950/20"/>
+        <MiniCard icon={<Wheat className="w-4 h-4 text-purple-400"/>} label="Shodaqoh Beras" value={formatKg(lap?.total_sadaqah_beras || 0)} bg="bg-purple-50 dark:bg-purple-950/20"/>
       </div>
 
       <div className="grid grid-cols-1 lg:grid-cols-3 gap-4">

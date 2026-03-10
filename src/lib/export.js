@@ -11,19 +11,15 @@ const BORDER  = [220, 218, 215]
 
 function header(doc, pg, title) {
   const W = doc.internal.pageSize.getWidth()
-  // Green top stripe
   doc.setFillColor(...EMERALD)
   doc.rect(0, 0, W, 3, 'F')
-  // Light bg
   doc.setFillColor(246, 252, 249)
   doc.rect(0, 3, W, 42, 'F')
-  // Green square icon placeholder
   doc.setFillColor(...EMERALD)
   doc.roundedRect(14, 9, 26, 26, 3, 3, 'F')
   doc.setTextColor(...WHITE)
   doc.setFontSize(13)
   doc.text('ZF', 27, 24, { align: 'center' })
-  // Title
   doc.setTextColor(...DARK)
   doc.setFontSize(13)
   doc.setFont('helvetica', 'bold')
@@ -35,7 +31,6 @@ function header(doc, pg, title) {
   const loc = [pg.nama_desa, pg.nama_kecamatan, pg.nama_kabupaten].filter(Boolean).join(', ')
   if (loc) doc.text(loc, 46, 30)
   doc.text('Tahun ' + (pg.tahun || new Date().getFullYear()) + ' / 1446 H', 46, 36)
-  // Divider
   doc.setDrawColor(...EMERALD)
   doc.setLineWidth(0.5)
   doc.line(14, 45, W - 14, 45)
@@ -72,8 +67,70 @@ function sectionLabel(doc, y, text) {
   return y + 10
 }
 
+// TTD_H = tinggi blok tanda tangan dalam mm
+// Tabel yang diikuti TTD harus pakai margin.bottom >= TTD_H + 18
+// supaya baris terakhir tidak pernah terdorong ke posisi yang tidak menyisakan ruang.
+const TTD_H = 62
+
+function tandaTangan(doc, pg, y) {
+  const W = doc.internal.pageSize.getWidth()
+  const H = doc.internal.pageSize.getHeight()
+  const signers = [
+    { name: pg.ketua_amilin, title: 'Ketua Amilin' },
+    { name: pg.sekretaris,   title: 'Sekretaris'   },
+    { name: pg.bendahara,    title: 'Bendahara'    },
+  ].filter(s => s.name)
+
+  if (!signers.length) return y
+
+  let yT = y + 6
+
+  // Fallback: kalau masih tidak muat, tambah halaman baru
+  if (yT + TTD_H > H - 14) {
+    doc.addPage()
+    yT = header(doc, pg, 'TANDA TANGAN')
+  }
+
+  yT = sectionLabel(doc, yT, 'Tanda Tangan Pengurus')
+
+  // Lokasi & tanggal
+  const thn    = pg.tahun || new Date().getFullYear()
+  const lokasi = pg.nama_desa || pg.nama_masjid || '............'
+  doc.setFontSize(8)
+  doc.setFont('helvetica', 'normal')
+  doc.setTextColor(...MUTED)
+  doc.text(lokasi + ', .................. ' + thn, W - 14, yT + 4, { align: 'right' })
+  yT += 10
+
+  const cw = (W - 28) / 3
+
+  signers.forEach(({ name, title }, i) => {
+    const cx = 14 + i * cw + cw / 2
+
+    doc.setFontSize(8)
+    doc.setFont('helvetica', 'normal')
+    doc.setTextColor(...MUTED)
+    doc.text(title + ',', cx, yT, { align: 'center' })
+
+    doc.setDrawColor(...BORDER)
+    doc.setLineWidth(0.25)
+    doc.roundedRect(cx - 25, yT + 3, 50, 24, 1.5, 1.5, 'S')
+
+    doc.setDrawColor(...DARK)
+    doc.setLineWidth(0.4)
+    doc.line(cx - 23, yT + 30, cx + 23, yT + 30)
+
+    doc.setFont('helvetica', 'bold')
+    doc.setFontSize(8.5)
+    doc.setTextColor(...DARK)
+    doc.text(name, cx, yT + 36, { align: 'center' })
+  })
+
+  return yT + 42
+}
+
 // ─────────────────────────────────────────────
-// EXPORT LAPORAN LENGKAP (Portrait, 2 halaman)
+// EXPORT 1: LAPORAN LENGKAP (Portrait, A4)
 // ─────────────────────────────────────────────
 export async function exportLaporanToPDF(laporan, muzakiList, pengaturan) {
   const { jsPDF } = await import('jspdf')
@@ -87,11 +144,10 @@ export async function exportLaporanToPDF(laporan, muzakiList, pengaturan) {
   // ── Halaman 1: Ringkasan ──
   let y = header(doc, pg, 'LAPORAN ZAKAT FITRAH')
 
-  // Stat boxes
   y = sectionLabel(doc, y, 'Statistik Keseluruhan')
   const stats = [
-    { val: (laporan?.total_kk || 0) + ' KK',    lbl: 'Total Keluarga' },
-    { val: (laporan?.total_jiwa || 0) + ' jiwa', lbl: 'Total Jiwa' },
+    { val: (laporan?.total_kk || 0) + ' KK',      lbl: 'Total Keluarga' },
+    { val: (laporan?.total_jiwa || 0) + ' jiwa',   lbl: 'Total Jiwa' },
     { val: (laporan?.pembayar_uang || 0) + ' KK',  lbl: 'Bayar Uang' },
     { val: (laporan?.pembayar_beras || 0) + ' KK', lbl: 'Bayar Beras' },
   ]
@@ -102,16 +158,13 @@ export async function exportLaporanToPDF(laporan, muzakiList, pengaturan) {
     doc.setDrawColor(...BORDER)
     doc.setLineWidth(0.3)
     doc.roundedRect(x, y, colW, 18, 2, 2, 'FD')
-    // Color accent top
     doc.setFillColor(...EMERALD)
     doc.roundedRect(x, y, colW, 3, 2, 2, 'F')
     doc.rect(x, y + 1.5, colW, 1.5, 'F')
-    // Value
     doc.setFontSize(14)
     doc.setFont('helvetica', 'bold')
     doc.setTextColor(...EMERALD)
     doc.text(val.split(' ')[0], x + colW / 2, y + 11, { align: 'center' })
-    // Unit suffix
     const suffix = val.split(' ').slice(1).join(' ')
     if (suffix) {
       doc.setFontSize(7)
@@ -119,14 +172,12 @@ export async function exportLaporanToPDF(laporan, muzakiList, pengaturan) {
       doc.setTextColor(...MUTED)
       doc.text(suffix, x + colW / 2 + 6, y + 11)
     }
-    // Label
     doc.setFontSize(6.5)
     doc.setTextColor(...MUTED)
     doc.text(lbl, x + colW / 2, y + 16, { align: 'center' })
   })
   y += 23
 
-  // Tabel penerimaan
   y = sectionLabel(doc, y, 'Jumlah Penerimaan')
   autoTable(doc, {
     startY: y,
@@ -139,7 +190,7 @@ export async function exportLaporanToPDF(laporan, muzakiList, pengaturan) {
       ['Infak Wajib', formatRupiah(laporan?.total_infak || 0)],
       ['Infak Tambahan', formatRupiah(laporan?.total_infak_tambahan || 0)],
       ['Shodaqoh Uang', formatRupiah(laporan?.total_sadaqah_uang || 0)],
-      ['Shodaqoh Beras (' + formatKg(laporan?.total_sadaqah_beras || 0) + ')', formatRupiah((laporan?.total_sadaqah_beras || 0) * harga)],
+      ['Shodaqoh Beras', formatKg(laporan?.total_sadaqah_beras || 0)],
       ['TOTAL KESELURUHAN', formatRupiah(distrib.total_keseluruhan)],
     ],
     theme: 'plain',
@@ -159,7 +210,6 @@ export async function exportLaporanToPDF(laporan, muzakiList, pengaturan) {
   })
   y = doc.lastAutoTable.finalY + 8
 
-  // Distribusi
   y = sectionLabel(doc, y, 'Distribusi Zakat Fitrah')
   autoTable(doc, {
     startY: y,
@@ -187,32 +237,8 @@ export async function exportLaporanToPDF(laporan, muzakiList, pengaturan) {
     },
   })
 
-  // Tanda tangan
-  if (pg.ketua_amilin || pg.bendahara) {
-    y = doc.lastAutoTable.finalY + 12
-    if (y > 230) { doc.addPage(); y = header(doc, pg, 'TANDA TANGAN') }
-    y = sectionLabel(doc, y, 'Tanda Tangan Pengurus')
-    const signers = [
-      { name: pg.ketua_amilin, title: 'Ketua Amilin' },
-      { name: pg.sekretaris,   title: 'Sekretaris' },
-      { name: pg.bendahara,    title: 'Bendahara' },
-    ].filter(s => s.name)
-    const cw = (W - 28) / 3
-    signers.forEach(({ name, title }, i) => {
-      const cx = 14 + i * cw + cw / 2
-      doc.setFontSize(8)
-      doc.setFont('helvetica', 'normal')
-      doc.setTextColor(...MUTED)
-      doc.text(title + ',', cx, y + 5, { align: 'center' })
-      doc.setDrawColor(...DARK)
-      doc.setLineWidth(0.4)
-      doc.line(cx - 28, y + 27, cx + 28, y + 27)
-      doc.setFont('helvetica', 'bold')
-      doc.setFontSize(8.5)
-      doc.setTextColor(...DARK)
-      doc.text(name, cx, y + 32, { align: 'center' })
-    })
-  }
+  // TTD halaman 1 — langsung setelah distribusi
+  tandaTangan(doc, pg, doc.lastAutoTable.finalY + 8)
 
   // ── Halaman 2: Daftar Muzaki ──
   doc.addPage()
@@ -221,7 +247,7 @@ export async function exportLaporanToPDF(laporan, muzakiList, pengaturan) {
 
   autoTable(doc, {
     startY: y2,
-    margin: { left: 14, right: 14 },
+    margin: { left: 14, right: 14, bottom: TTD_H + 18 },
     head: [['No', 'Kepala Keluarga', 'Anggota Keluarga', 'Jiwa', 'Zakat Uang', 'Zakat\nBeras', 'Infak\nWajib', 'Infak\nTambahan', 'Shodaqoh', 'H']],
     body: muzakiList.map((m, i) => {
       const anggota = (m.anggota_keluarga || []).filter(Boolean)
@@ -274,7 +300,7 @@ export async function exportLaporanToPDF(laporan, muzakiList, pengaturan) {
     },
   })
 
-  // Total footer bar
+  // Summary bar
   const totY = doc.lastAutoTable.finalY + 4
   const totH = 12
   doc.setFillColor(...LIGHT2)
@@ -292,12 +318,15 @@ export async function exportLaporanToPDF(laporan, muzakiList, pengaturan) {
   ].join('   |   ')
   doc.text(totText, W / 2, totY + totH / 2 + 2.5, { align: 'center' })
 
+  // TTD halaman 2 — langsung setelah summary bar
+  tandaTangan(doc, pg, totY + totH + 4)
+
   footer(doc, pg)
   doc.save('laporan-zakat-fitrah-' + (pg.tahun || new Date().getFullYear()) + '.pdf')
 }
 
 // ─────────────────────────────────────────────
-// EXPORT DAFTAR MUZAKI LENGKAP (Landscape)
+// EXPORT 2: DAFTAR MUZAKI LENGKAP (Landscape)
 // ─────────────────────────────────────────────
 export async function exportMuzakiToPDF(muzakiList, pengaturan) {
   const { jsPDF } = await import('jspdf')
@@ -311,7 +340,7 @@ export async function exportMuzakiToPDF(muzakiList, pengaturan) {
 
   autoTable(doc, {
     startY: y,
-    margin: { left: 14, right: 14 },
+    margin: { left: 14, right: 14, bottom: TTD_H + 18 },
     head: [['No', 'Kepala Keluarga', 'Anggota Keluarga', 'Jiwa', 'RT/RW', 'Jenis', 'Zakat Uang', 'Zakat\nBeras', 'Jiwa\nInfak', 'Infak\nWajib', 'Infak\nTambahan', 'Shodaqoh', 'Hari', 'Tanggal']],
     body: muzakiList.map((m, i) => {
       const anggota = (m.anggota_keluarga || []).filter(Boolean)
@@ -372,7 +401,7 @@ export async function exportMuzakiToPDF(muzakiList, pengaturan) {
     },
   })
 
-  // Total footer
+  // Summary bar
   const totY2 = doc.lastAutoTable.finalY + 4
   doc.setFillColor(...LIGHT2)
   doc.setDrawColor(...EMERALD)
@@ -389,12 +418,15 @@ export async function exportMuzakiToPDF(muzakiList, pengaturan) {
   ].join('   |   ')
   doc.text(tot2, W / 2, totY2 + 8, { align: 'center' })
 
+  // TTD — langsung setelah summary bar
+  tandaTangan(doc, pg, totY2 + 12 + 4)
+
   footer(doc, pg)
   doc.save('data-muzaki-' + (pg.tahun || new Date().getFullYear()) + '.pdf')
 }
 
 // ─────────────────────────────────────────────
-// EXPORT DAFTAR MUSTAHIK (Portrait)
+// EXPORT 3: DAFTAR MUSTAHIK (Portrait)
 // ─────────────────────────────────────────────
 export async function exportMustahikToPDF(mustahikList, pengaturan) {
   const { jsPDF } = await import('jspdf')
@@ -418,7 +450,7 @@ export async function exportMustahikToPDF(mustahikList, pengaturan) {
 
   autoTable(doc, {
     startY: y,
-    margin: { left: 14, right: 14 },
+    margin: { left: 14, right: 14, bottom: TTD_H + 18 },
     head: [['No', 'Nama', 'NIK', 'Kategori', 'Alamat / RT-RW', 'Status', 'Terima Uang', 'Terima Beras', 'Tgl Terima']],
     body: mustahikList.map((m, i) => [
       i + 1,
@@ -457,6 +489,303 @@ export async function exportMustahikToPDF(mustahikList, pengaturan) {
     },
   })
 
+  // TTD — langsung setelah tabel
+  tandaTangan(doc, pg, doc.lastAutoTable.finalY + 8)
+
   footer(doc, pg)
   doc.save('data-mustahik-' + (pg.tahun || new Date().getFullYear()) + '.pdf')
+}
+
+
+// ─────────────────────────────────────────────
+// EXCEL HELPERS
+// ─────────────────────────────────────────────
+async function createWorkbook() {
+  const mod = await import('exceljs')
+  const ExcelJS = mod.default || mod
+  return new ExcelJS.Workbook()
+}
+
+const XL = {
+  GREEN: '059669', GREEN_LIGHT: 'D1FAE5', GREEN_DARK: '065F46',
+  GOLD: 'B45309', GOLD_LIGHT: 'FEF3C7',
+  BLUE: '1D4ED8', BLUE_LIGHT: 'DBEAFE',
+  PURPLE: '7C3AED', PURPLE_LIGHT: 'EDE9FE',
+  GRAY: '6B7280', GRAY_LIGHT: 'F9FAFB', GRAY_MED: 'E5E7EB',
+  WHITE: 'FFFFFF', BLACK: '111827',
+  fontHead: (sz=10) => ({ name: 'Arial', size: sz, bold: true, color: { argb: 'FF'+'FFFFFF' } }),
+  fontBold: (sz=10, color='111827') => ({ name: 'Arial', size: sz, bold: true, color: { argb: 'FF'+color } }),
+  fontNorm: (sz=9, color='111827') => ({ name: 'Arial', size: sz, color: { argb: 'FF'+color } }),
+  fillSolid: (hex) => ({ type: 'pattern', pattern: 'solid', fgColor: { argb: 'FF'+hex } }),
+  borderAll: (style='thin') => ({ top:{style}, left:{style}, bottom:{style}, right:{style} }),
+  alignCenter: { horizontal: 'center', vertical: 'middle' },
+  alignRight: { horizontal: 'right', vertical: 'middle' },
+  alignLeft: { horizontal: 'left', vertical: 'middle' },
+}
+
+function styleHeader(row, bgHex) {
+  row.height = 20
+  row.eachCell(cell => {
+    cell.font = { name: 'Arial', size: 9.5, bold: true, color: { argb: 'FFFFFFFF' } }
+    cell.fill = XL.fillSolid(bgHex)
+    cell.alignment = { ...XL.alignCenter, wrapText: true }
+    cell.border = XL.borderAll('thin')
+  })
+}
+
+function styleDataRow(row, isAlt, boldCols=[]) {
+  row.height = 16
+  row.eachCell({ includeEmpty: true }, (cell, colNum) => {
+    cell.fill = XL.fillSolid(isAlt ? XL.GRAY_LIGHT : XL.WHITE)
+    cell.font = boldCols.includes(colNum) ? XL.fontBold(9) : XL.fontNorm(9)
+    cell.border = { bottom: { style: 'hair', color: { argb: 'FFE5E7EB' } } }
+  })
+}
+
+function styleTotalRow(row, bgHex) {
+  row.height = 18
+  row.eachCell({ includeEmpty: true }, cell => {
+    cell.font = { name: 'Arial', size: 9.5, bold: true, color: { argb: 'FFFFFFFF' } }
+    cell.fill = XL.fillSolid(bgHex)
+    cell.border = XL.borderAll('medium')
+  })
+}
+
+function addTitleBlock(ws, masjid, tahun, subtitle, maxCol='P') {
+  ws.mergeCells(`A1:${maxCol}1`)
+  const r1 = ws.getRow(1); r1.height = 28
+  const c1 = ws.getCell('A1')
+  c1.value = `LAPORAN ZAKAT FITRAH — ${masjid}`
+  c1.font = { name: 'Arial', size: 14, bold: true, color: { argb: 'FF'+XL.GREEN_DARK } }
+  c1.alignment = XL.alignCenter
+  c1.fill = XL.fillSolid(XL.GREEN_LIGHT)
+
+  ws.mergeCells(`A2:${maxCol}2`)
+  const r2 = ws.getRow(2); r2.height = 16
+  const c2 = ws.getCell('A2')
+  c2.value = `Tahun ${tahun} / 1446 H${subtitle ? '   |   ' + subtitle : ''}`
+  c2.font = XL.fontNorm(9, XL.GRAY)
+  c2.alignment = XL.alignCenter
+  c2.fill = XL.fillSolid('F0FDF4')
+
+  ws.getRow(3).height = 6
+}
+
+// ─────────────────────────────────────────────
+// EXPORT EXCEL: LAPORAN LENGKAP (multi-sheet)
+// ─────────────────────────────────────────────
+export async function exportLaporanToExcel(laporan, muzakiList, mustahikList, harianList, pengaturan) {
+  const wb = await createWorkbook()
+  wb.creator = 'Amilin'
+  wb.created = new Date()
+  const pg = pengaturan || {}
+  const harga = pg.harga_beras_per_kg || 15000
+  const distrib = hitungDistribusi(laporan, pg)
+  const masjid = pg.nama_masjid || 'Masjid'
+  const tahun = pg.tahun || new Date().getFullYear()
+
+  // ── SHEET 1: RINGKASAN ──
+  const ws1 = wb.addWorksheet('Ringkasan', { properties: { tabColor: { argb: 'FF059669' } } })
+  ws1.views = [{ showGridLines: false }]
+  ws1.columns = [{ key: 'a', width: 40 }, { key: 'b', width: 22 }, { key: 'c', width: 18 }, { key: 'd', width: 18 }]
+  addTitleBlock(ws1, masjid, tahun, '', 'D')
+
+  // Statistik
+  let secR = ws1.addRow(['  📊  STATISTIK KESELURUHAN'])
+  ws1.mergeCells(`A${secR.number}:D${secR.number}`)
+  secR.height = 18
+  ws1.getCell(`A${secR.number}`).font = XL.fontBold(10, XL.WHITE)
+  ws1.getCell(`A${secR.number}`).fill = XL.fillSolid(XL.GREEN)
+
+  const stats = [['Total KK', (laporan?.total_kk||0)+' KK'],['Total Jiwa', (laporan?.total_jiwa||0)+' jiwa'],['Bayar Uang', (laporan?.pembayar_uang||0)+' KK'],['Bayar Beras', (laporan?.pembayar_beras||0)+' KK']]
+  stats.forEach(([lbl, val], i) => {
+    const row = ws1.addRow([lbl, val])
+    styleDataRow(row, i % 2 === 0)
+    row.getCell(1).alignment = XL.alignLeft
+    row.getCell(2).font = XL.fontBold(9, XL.GREEN_DARK)
+    row.getCell(2).alignment = XL.alignRight
+  })
+
+  ws1.addRow([])
+
+  // Penerimaan
+  const h2 = ws1.addRow(['  💰  REKAPITULASI PENERIMAAN', 'Jumlah'])
+  ws1.mergeCells(`A${h2.number}:A${h2.number}`)
+  styleHeader(h2, XL.GREEN)
+
+  const penerimaan = [
+    ['Zakat Uang', laporan?.total_uang||0, 'rp'],
+    ['Zakat Beras', laporan?.total_beras||0, 'kg'],
+    [`Beras dikonversi (@Rp${Number(harga).toLocaleString('id')}/kg)`, (laporan?.total_beras||0)*harga, 'rp'],
+    ['Infak Wajib', laporan?.total_infak||0, 'rp'],
+    ['Infak Tambahan', laporan?.total_infak_tambahan||0, 'rp'],
+    ['Shodaqoh Uang', laporan?.total_sadaqah_uang||0, 'rp'],
+    ['Shodaqoh Beras', laporan?.total_sadaqah_beras||0, 'kg'],
+  ]
+  penerimaan.forEach(([lbl, val, type], i) => {
+    const row = ws1.addRow([lbl, val])
+    styleDataRow(row, i % 2 === 0)
+    row.getCell(1).alignment = XL.alignLeft
+    row.getCell(2).numFmt = type === 'rp' ? '#,##0' : '#,##0.00'
+    row.getCell(2).alignment = XL.alignRight
+    row.getCell(2).font = XL.fontBold(9, type === 'rp' ? XL.GREEN_DARK : XL.GOLD)
+  })
+  const totPen = ws1.addRow(['TOTAL KESELURUHAN', distrib.total_keseluruhan])
+  styleTotalRow(totPen, XL.GREEN_DARK)
+  totPen.getCell(2).numFmt = '#,##0'; totPen.getCell(2).alignment = XL.alignRight
+
+  ws1.addRow([])
+
+  // Distribusi
+  const h3 = ws1.addRow(['  🕌  DISTRIBUSI ZAKAT FITRAH', 'Proporsi', 'Jumlah (Rp)', 'Beras (kg)'])
+  styleHeader(h3, XL.GOLD)
+
+  const distribRows = [
+    ['Fakir & Miskin','65%',distrib.fakir_miskin,(laporan?.total_beras||0)*0.65],
+    ['UPZ / Desa','20%',distrib.upz_desa,(laporan?.total_beras||0)*0.20],
+    ['Sabilillah','10%',distrib.sabilillah,(laporan?.total_beras||0)*0.10],
+    ['Amilin','5%',distrib.amilin,(laporan?.total_beras||0)*0.05],
+  ]
+  distribRows.forEach(([lbl, pct, rph, brs], i) => {
+    const row = ws1.addRow([lbl, pct, rph, brs])
+    styleDataRow(row, i % 2 === 0)
+    row.getCell(1).alignment = XL.alignLeft
+    row.getCell(2).alignment = XL.alignCenter; row.getCell(2).font = XL.fontNorm(9, XL.GRAY)
+    row.getCell(3).numFmt = '#,##0'; row.getCell(3).alignment = XL.alignRight; row.getCell(3).font = XL.fontBold(9, XL.GOLD)
+    row.getCell(4).numFmt = '#,##0.00'; row.getCell(4).alignment = XL.alignRight
+  })
+  const totDist = ws1.addRow(['TOTAL','100%',distrib.total_zakat,laporan?.total_beras||0])
+  styleTotalRow(totDist, XL.GOLD)
+  totDist.getCell(2).alignment = XL.alignCenter
+  totDist.getCell(3).numFmt = '#,##0'; totDist.getCell(3).alignment = XL.alignRight
+  totDist.getCell(4).numFmt = '#,##0.00'; totDist.getCell(4).alignment = XL.alignRight
+
+  // ── SHEET 2: DATA MUZAKI ──
+  _buildMuzakiSheet(wb, muzakiList, masjid, tahun)
+
+  // ── SHEET 3: REKAP HARIAN ──
+  const ws3 = wb.addWorksheet('Rekap Harian', { properties: { tabColor: { argb: 'FFB45309' } } })
+  ws3.views = [{ showGridLines: false }]
+  ws3.columns = [
+    {key:'a',width:9},{key:'b',width:16},{key:'c',width:12},{key:'d',width:12},
+    {key:'e',width:18},{key:'f',width:16},{key:'g',width:18},{key:'h',width:18},{key:'i',width:16}
+  ]
+  addTitleBlock(ws3, masjid, tahun, 'Rekap Per Hari', 'I')
+
+  const hrHead = ws3.addRow(['Hari Ke','Tanggal','Jumlah KK','Jumlah Jiwa','Zakat Uang (Rp)','Zakat Beras (kg)','Infak (Rp)','Shodaqoh Uang (Rp)','Shodaqoh Beras (kg)'])
+  styleHeader(hrHead, XL.GOLD)
+
+  harianList.forEach((h, i) => {
+    const row = ws3.addRow(['Hari '+h.hari_ke, h.tanggal_bayar?new Date(h.tanggal_bayar).toLocaleDateString('id-ID'):'', h.jumlah_kk||0, h.jumlah_jiwa||0, h.total_uang||0, h.total_beras||0, h.total_infak||0, h.total_sadaqah_uang||0, h.total_sadaqah_beras||0])
+    styleDataRow(row, i % 2 === 0)
+    row.getCell(1).alignment = XL.alignCenter; row.getCell(1).font = XL.fontBold(9, XL.GOLD)
+    row.getCell(2).alignment = XL.alignCenter
+    row.getCell(3).alignment = XL.alignCenter; row.getCell(4).alignment = XL.alignCenter
+    row.getCell(5).numFmt = '#,##0'; row.getCell(5).alignment = XL.alignRight; row.getCell(5).font = XL.fontBold(9, XL.GREEN_DARK)
+    row.getCell(6).numFmt = '#,##0.00'; row.getCell(6).alignment = XL.alignRight; row.getCell(6).font = XL.fontBold(9, XL.GOLD)
+    row.getCell(7).numFmt = '#,##0'; row.getCell(7).alignment = XL.alignRight; row.getCell(7).font = XL.fontNorm(9, XL.BLUE)
+    row.getCell(8).numFmt = '#,##0'; row.getCell(8).alignment = XL.alignRight; row.getCell(8).font = XL.fontNorm(9, XL.PURPLE)
+    row.getCell(9).numFmt = '#,##0.00'; row.getCell(9).alignment = XL.alignRight; row.getCell(9).font = XL.fontNorm(9, XL.PURPLE)
+  })
+  const hrTot = ws3.addRow(['TOTAL','',harianList.reduce((s,h)=>s+(h.jumlah_kk||0),0),harianList.reduce((s,h)=>s+(h.jumlah_jiwa||0),0),harianList.reduce((s,h)=>s+(h.total_uang||0),0),harianList.reduce((s,h)=>s+(h.total_beras||0),0),harianList.reduce((s,h)=>s+(h.total_infak||0),0),harianList.reduce((s,h)=>s+(h.total_sadaqah_uang||0),0),harianList.reduce((s,h)=>s+(h.total_sadaqah_beras||0),0)])
+  styleTotalRow(hrTot, XL.GOLD)
+  hrTot.getCell(1).alignment = XL.alignCenter; hrTot.getCell(3).alignment = XL.alignCenter; hrTot.getCell(4).alignment = XL.alignCenter
+  hrTot.getCell(5).numFmt = '#,##0'; hrTot.getCell(5).alignment = XL.alignRight
+  hrTot.getCell(6).numFmt = '#,##0.00'; hrTot.getCell(6).alignment = XL.alignRight
+  hrTot.getCell(7).numFmt = '#,##0'; hrTot.getCell(7).alignment = XL.alignRight
+  hrTot.getCell(8).numFmt = '#,##0'; hrTot.getCell(8).alignment = XL.alignRight
+  hrTot.getCell(9).numFmt = '#,##0.00'; hrTot.getCell(9).alignment = XL.alignRight
+
+  // ── SHEET 4: MUSTAHIK ──
+  if (mustahikList && mustahikList.length > 0) {
+    const ws4 = wb.addWorksheet('Data Mustahik', { properties: { tabColor: { argb: 'FF7C3AED' } } })
+    ws4.views = [{ showGridLines: false, state: 'frozen', xSplit: 0, ySplit: 4 }]
+    ws4.columns = [{key:'a',width:5},{key:'b',width:28},{key:'c',width:18},{key:'d',width:14},{key:'e',width:30},{key:'f',width:6},{key:'g',width:6},{key:'h',width:10},{key:'i',width:16},{key:'j',width:14},{key:'k',width:16}]
+    addTitleBlock(ws4, masjid, tahun, `${mustahikList.length} Mustahik`, 'K')
+
+    const mtHead = ws4.addRow(['No','Nama','NIK','Kategori','Alamat','RT','RW','Status','Terima Uang (Rp)','Terima Beras (kg)','Tanggal Terima'])
+    styleHeader(mtHead, XL.PURPLE)
+
+    mustahikList.forEach((m, i) => {
+      const row = ws4.addRow([i+1, m.nama, m.nik||'', LABEL_KATEGORI[m.kategori]||m.kategori||'', m.alamat||'', m.rt||'', m.rw||'', m.sudah_terima?'Sudah ✓':'Belum', m.jumlah_terima_uang||0, m.jumlah_terima_beras||0, m.tanggal_terima?new Date(m.tanggal_terima).toLocaleDateString('id-ID'):''])
+      styleDataRow(row, i % 2 === 0, [2])
+      row.getCell(1).alignment = XL.alignCenter
+      row.getCell(2).font = XL.fontBold(9)
+      row.getCell(3).font = XL.fontNorm(8, XL.GRAY)
+      row.getCell(6).alignment = XL.alignCenter; row.getCell(7).alignment = XL.alignCenter
+      row.getCell(8).alignment = XL.alignCenter
+      row.getCell(8).font = m.sudah_terima ? XL.fontBold(9, XL.GREEN_DARK) : XL.fontBold(9, 'DC2626')
+      row.getCell(9).numFmt = '#,##0'; row.getCell(9).alignment = XL.alignRight
+      row.getCell(10).numFmt = '#,##0.00'; row.getCell(10).alignment = XL.alignRight
+      row.getCell(11).alignment = XL.alignCenter; row.getCell(11).font = XL.fontNorm(8, XL.GRAY)
+    })
+  }
+
+  _downloadXlsx(wb, `laporan-zakat-${masjid.toLowerCase().replace(/\s+/g,'-')}-${tahun}.xlsx`)
+}
+
+function _buildMuzakiSheet(wb, muzakiList, masjid, tahun) {
+  const ws = wb.addWorksheet('Data Muzaki', { properties: { tabColor: { argb: 'FF1D4ED8' } } })
+  ws.views = [{ showGridLines: false, state: 'frozen', xSplit: 0, ySplit: 4 }]
+  ws.columns = [
+    {key:'no',width:5},{key:'nama',width:28},{key:'anggota',width:32},{key:'jiwa',width:7},
+    {key:'rt',width:6},{key:'rw',width:6},{key:'jenis',width:11},{key:'zuang',width:16},
+    {key:'zberas',width:13},{key:'jinfak',width:8},{key:'infakw',width:15},{key:'infakt',width:15},
+    {key:'suang',width:15},{key:'sberas',width:13},{key:'hari',width:7},{key:'tgl',width:14},
+  ]
+  addTitleBlock(ws, masjid, tahun, `${muzakiList.length} Muzaki`)
+
+  const headRow = ws.addRow(['No','Kepala Keluarga','Anggota Keluarga','Jiwa','RT','RW','Jenis','Zakat Uang (Rp)','Zakat Beras (kg)','Jiwa\nInfak','Infak Wajib (Rp)','Infak Tambahan (Rp)','Shodaqoh Uang (Rp)','Shodaqoh Beras (kg)','Hari','Tanggal'])
+  styleHeader(headRow, XL.BLUE)
+  headRow.height = 22
+
+  muzakiList.forEach((m, i) => {
+    const row = ws.addRow([i+1, m.nama_kepala_keluarga, (m.anggota_keluarga||[]).filter(Boolean).join(', '), m.jumlah_jiwa||0, m.rt||'', m.rw||'', m.jenis_bayar==='uang'?'Uang':m.jenis_bayar==='beras'?'Beras':'Campuran', m.jumlah_uang||0, m.jumlah_beras||0, m.jiwa_infak||0, m.jumlah_infak||0, m.infak_tambahan||0, m.jumlah_sadaqah_uang||0, m.jumlah_sadaqah_beras||0, m.hari_ke||'', m.tanggal_bayar?new Date(m.tanggal_bayar).toLocaleDateString('id-ID'):''])
+    styleDataRow(row, i % 2 === 0, [2])
+    row.getCell(1).alignment = XL.alignCenter
+    row.getCell(2).font = XL.fontBold(9)
+    row.getCell(3).font = XL.fontNorm(8, XL.GRAY)
+    row.getCell(4).alignment = XL.alignCenter; row.getCell(5).alignment = XL.alignCenter; row.getCell(6).alignment = XL.alignCenter; row.getCell(7).alignment = XL.alignCenter
+    row.getCell(8).numFmt = '#,##0'; row.getCell(8).alignment = XL.alignRight; row.getCell(8).font = XL.fontBold(9, XL.GREEN_DARK)
+    row.getCell(9).numFmt = '#,##0.00'; row.getCell(9).alignment = XL.alignRight; row.getCell(9).font = XL.fontBold(9, XL.GOLD)
+    row.getCell(10).alignment = XL.alignCenter
+    row.getCell(11).numFmt = '#,##0'; row.getCell(11).alignment = XL.alignRight; row.getCell(11).font = XL.fontNorm(9, XL.BLUE)
+    row.getCell(12).numFmt = '#,##0'; row.getCell(12).alignment = XL.alignRight; row.getCell(12).font = XL.fontNorm(9, XL.BLUE)
+    row.getCell(13).numFmt = '#,##0'; row.getCell(13).alignment = XL.alignRight; row.getCell(13).font = XL.fontNorm(9, XL.PURPLE)
+    row.getCell(14).numFmt = '#,##0.00'; row.getCell(14).alignment = XL.alignRight; row.getCell(14).font = XL.fontNorm(9, XL.PURPLE)
+    row.getCell(15).alignment = XL.alignCenter
+    row.getCell(16).alignment = XL.alignCenter; row.getCell(16).font = XL.fontNorm(8, XL.GRAY)
+  })
+
+  const totRow = ws.addRow(['','TOTAL',`${muzakiList.length} KK`,muzakiList.reduce((s,m)=>s+(m.jumlah_jiwa||0),0),'','','',muzakiList.reduce((s,m)=>s+(m.jumlah_uang||0),0),muzakiList.reduce((s,m)=>s+(m.jumlah_beras||0),0),'',muzakiList.reduce((s,m)=>s+(m.jumlah_infak||0),0),muzakiList.reduce((s,m)=>s+(m.infak_tambahan||0),0),muzakiList.reduce((s,m)=>s+(m.jumlah_sadaqah_uang||0),0),muzakiList.reduce((s,m)=>s+(m.jumlah_sadaqah_beras||0),0),'',''])
+  styleTotalRow(totRow, XL.BLUE)
+  totRow.getCell(4).alignment = XL.alignCenter
+  totRow.getCell(8).numFmt = '#,##0'; totRow.getCell(8).alignment = XL.alignRight
+  totRow.getCell(9).numFmt = '#,##0.00'; totRow.getCell(9).alignment = XL.alignRight
+  totRow.getCell(11).numFmt = '#,##0'; totRow.getCell(11).alignment = XL.alignRight
+  totRow.getCell(12).numFmt = '#,##0'; totRow.getCell(12).alignment = XL.alignRight
+  totRow.getCell(13).numFmt = '#,##0'; totRow.getCell(13).alignment = XL.alignRight
+  totRow.getCell(14).numFmt = '#,##0.00'; totRow.getCell(14).alignment = XL.alignRight
+}
+
+async function _downloadXlsx(wb, filename) {
+  const buffer = await wb.xlsx.writeBuffer()
+  const blob = new Blob([buffer], { type: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet' })
+  const url = URL.createObjectURL(blob)
+  const a = document.createElement('a')
+  a.href = url; a.download = filename; a.click()
+  URL.revokeObjectURL(url)
+}
+
+// ─────────────────────────────────────────────
+// EXPORT EXCEL: DAFTAR MUZAKI (standalone)
+// ─────────────────────────────────────────────
+export async function exportMuzakiToExcel(muzakiList, pengaturan) {
+  const wb = await createWorkbook()
+  wb.creator = 'Amilin'
+  const pg = pengaturan || {}
+  const masjid = pg.nama_masjid || 'Masjid'
+  const tahun = pg.tahun || new Date().getFullYear()
+  _buildMuzakiSheet(wb, muzakiList, masjid, tahun)
+  await _downloadXlsx(wb, `data-muzaki-${masjid.toLowerCase().replace(/\s+/g,'-')}-${tahun}.xlsx`)
 }

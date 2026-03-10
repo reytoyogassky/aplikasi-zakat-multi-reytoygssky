@@ -2,32 +2,33 @@
 import { useEffect, useState } from 'react'
 import { useMasjid } from '@/hooks/useMasjid'
 import { formatRupiah, formatKg, hitungDistribusi } from '@/lib/utils'
-import { exportLaporanToPDF, exportMuzakiToPDF } from '@/lib/export'
+import { exportLaporanToPDF, exportMuzakiToPDF, exportLaporanToExcel } from '@/lib/export'
 import { PieChart, Pie, Cell, Legend, Tooltip, ResponsiveContainer } from 'recharts'
-import { FileDown, Printer, Loader2 } from 'lucide-react'
+import { FileDown, Printer, Loader2, FileSpreadsheet } from 'lucide-react'
 import toast from 'react-hot-toast'
 
 const PIE_COLORS = ['#059669','#2563eb','#d97706','#dc2626']
 
 export default function LaporanKeseluruhanPage() {
-  const { db, ready, masjidId } = useMasjid()
+  const { db, ready } = useMasjid()
   const [lap, setLap] = useState(null)
   const [har, setHar] = useState([])
   const [pg,  setPg]  = useState(null)
   const [loading, setLoading]   = useState(true)
   const [expPDF, setExpPDF]     = useState(false)
   const [expMuzaki, setExpMuzaki] = useState(false)
+  const [expExcel, setExpExcel] = useState(false)
 
   useEffect(() => {
-    if (!db || !masjidId) return
+    if (!db || !ready) return
     Promise.all([
-      db.from('v_laporan_keseluruhan').select('*').eq('masjid_id', masjidId).single(),
-      db.from('v_laporan_harian').select('*').eq('masjid_id', masjidId).order('hari_ke'),
-      db.from('pengaturan').select('*').eq('masjid_id', masjidId).single(),
+      db.from('v_laporan_keseluruhan').select('*').single(),
+      db.from('v_laporan_harian').select('*').order('hari_ke'),
+      db.from('pengaturan').select('*').single(),
     ]).then(([{data:l},{data:h},{data:p}]) => {
       setLap(l); setHar(h||[]); setPg(p); setLoading(false)
     })
-  }, [db, masjidId])
+  }, [db, ready])
 
   const dist  = lap && pg ? hitungDistribusi(lap, pg) : null
   const harga = pg?.harga_beras_per_kg || 15000
@@ -42,29 +43,59 @@ export default function LaporanKeseluruhanPage() {
     setExpPDF(true)
     const tid = toast.loading('Membuat PDF laporan...')
     try {
-      const { data: mz } = await db.from('muzaki').select('*').eq('masjid_id', masjidId).order('hari_ke').order('created_at')
+      const { data: mz } = await db.from('muzaki').select('*').order('hari_ke').order('created_at')
       if (lap && pg && mz) { await exportLaporanToPDF(lap, mz, pg); toast.success('PDF laporan berhasil!', { id: tid }) }
       else toast.error('Data tidak lengkap', { id: tid })
     } catch(e) { toast.error('Gagal: ' + e.message, { id: tid }) }
     setExpPDF(false)
   }
 
+  const handleExportExcel = async () => {
+    setExpExcel(true)
+    const tid = toast.loading('Membuat Excel...')
+    try {
+      const [{ data: mz }, { data: mt }] = await Promise.all([
+        db.from('muzaki').select('*').order('hari_ke').order('created_at'),
+        db.from('mustahik').select('*').order('created_at'),
+      ])
+      if (lap && pg) {
+        await exportLaporanToExcel(lap, mz || [], mt || [], har, pg)
+        toast.success('Excel berhasil diunduh!', { id: tid })
+      } else {
+        toast.error('Data tidak lengkap', { id: tid })
+      }
+    } catch(e) { toast.error('Gagal: ' + e.message, { id: tid }) }
+    setExpExcel(false)
+  }
+
   const handleExportMuzaki = async () => {
     setExpMuzaki(true)
     const tid = toast.loading('Membuat PDF data muzaki...')
     try {
-      const { data: mz } = await db.from('muzaki').select('*').eq('masjid_id', masjidId).order('hari_ke').order('created_at')
+      const { data: mz } = await db.from('muzaki').select('*').order('hari_ke').order('created_at')
       if (mz && pg) { await exportMuzakiToPDF(mz, pg); toast.success('PDF data muzaki berhasil!', { id: tid }) }
       else toast.error('Data tidak lengkap', { id: tid })
     } catch(e) { toast.error('Gagal: ' + e.message, { id: tid }) }
     setExpMuzaki(false)
   }
 
-  if (loading) return <div className="space-y-4">{[...Array(5)].map((_,i)=><div key={i} className="skeleton h-32 rounded-2xl"/>)}</div>
+  if (!ready || loading) return (
+    <div className="space-y-4">
+      <div className="flex items-start justify-between gap-3">
+        <div><div className="skeleton h-7 w-52 rounded-lg mb-2"/><div className="skeleton h-4 w-40 rounded"/></div>
+        <div className="flex gap-2"><div className="skeleton h-9 w-28 rounded-xl"/><div className="skeleton h-9 w-28 rounded-xl"/></div>
+      </div>
+      <div className="card p-5"><div className="skeleton h-24 rounded-xl"/></div>
+      <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
+        {[...Array(4)].map((_,i) => <div key={i} className="card p-4"><div className="skeleton h-4 w-20 rounded mb-2"/><div className="skeleton h-7 w-28 rounded"/></div>)}
+      </div>
+      <div className="card p-5"><div className="skeleton h-48 rounded-xl"/></div>
+      <div className="card p-5"><div className="skeleton h-64 rounded-xl"/></div>
+    </div>
+  )
 
   const totalInfak = (lap?.total_infak||0) + (lap?.total_infak_tambahan||0)
   const berasKonversi = (lap?.total_beras||0) * harga
-  const berasSadaqahKonversi = (lap?.total_sadaqah_beras||0) * harga
 
   return (
     <div className="space-y-4 animate-in">
@@ -75,6 +106,10 @@ export default function LaporanKeseluruhanPage() {
           <p className="page-sub">{pg?.nama_masjid} · Tahun {pg?.tahun}</p>
         </div>
         <div className="flex gap-2 no-print flex-wrap">
+          <button onClick={handleExportExcel} disabled={expExcel} className="btn-outline btn-sm">
+            {expExcel ? <Loader2 className="w-3.5 h-3.5 animate-spin"/> : <FileSpreadsheet className="w-3.5 h-3.5"/>}
+            Excel
+          </button>
           <button onClick={handleExportMuzaki} disabled={expMuzaki} className="btn-outline btn-sm">
             {expMuzaki ? <Loader2 className="w-3.5 h-3.5 animate-spin"/> : <FileDown className="w-3.5 h-3.5"/>}
             Data Muzaki
@@ -128,7 +163,7 @@ export default function LaporanKeseluruhanPage() {
             <TR label="Infak Wajib" value={formatRupiah(lap?.total_infak||0)} color="blue"/>
             <TR label="Infak Tambahan/Sukarela" value={formatRupiah(lap?.total_infak_tambahan||0)} color="blue"/>
             <TR label="Shodaqoh Uang" value={formatRupiah(lap?.total_sadaqah_uang||0)} color="purple"/>
-            <TR label={`Shodaqoh Beras (${formatKg(lap?.total_sadaqah_beras||0)}, dikonversi)`} value={formatRupiah(berasSadaqahKonversi)} color="purple"/>
+            <TR label="Shodaqoh Beras" value={formatKg(lap?.total_sadaqah_beras||0)} color="purple"/>
             <TR label="TOTAL KESELURUHAN" value={formatRupiah(dist?.total_keseluruhan||0)} bold/>
           </tbody>
         </table>
