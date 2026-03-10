@@ -2,7 +2,7 @@ import { NextResponse } from 'next/server'
 
 export function middleware(request) {
   const { pathname } = request.nextUrl
-  if (pathname.startsWith('/login') || pathname.startsWith('/api/auth')) {
+  if (pathname.startsWith('/login') || pathname.startsWith('/api/auth') || pathname.startsWith('/admin') || pathname.startsWith('/api/admin')) {
     return NextResponse.next()
   }
   const masjidId = request.cookies.get('amilin_masjid_id')?.value
