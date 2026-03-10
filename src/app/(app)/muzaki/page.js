@@ -9,7 +9,7 @@ import { Plus, Search, FileDown, Pencil, Trash2, X, Users, ChevronLeft, ChevronR
 const PAGE_SIZE = 15
 
 export default function MuzakiPage() {
-  const { db, ready, masjidId } = useMasjid()
+  const { db, ready } = useMasjid()
   const [list, setList]       = useState([])
   const [total, setTotal]     = useState(0)
   const [page, setPage]       = useState(1)
@@ -20,32 +20,32 @@ export default function MuzakiPage() {
   const [pengaturan, setPengaturan] = useState(null)
   const [expanded, setExpanded] = useState(null)
 
-  useEffect(() => { if (db && masjidId) db.from('pengaturan').select('*').eq('masjid_id', masjidId).single().then(({ data }) => { if (data) setPengaturan(data) }) }, [db, masjidId])
+  useEffect(() => { if (db) db.from('pengaturan').select('*').single().then(({ data }) => { if (data) setPengaturan(data) }) }, [db])
 
   const fetchList = useCallback(async () => {
-    if (!db || !masjidId) return
+    if (!db) return
     setLoading(true)
-    let q = db.from('muzaki').select('*', { count: 'exact' }).eq('masjid_id', masjidId)
+    let q = db.from('muzaki').select('*', { count: 'exact' })
     if (search) q = q.ilike('nama_kepala_keluarga', '%' + search + '%')
     if (filterHari) q = q.eq('hari_ke', +filterHari)
     q = q.order('created_at', { ascending: false }).range((page - 1) * PAGE_SIZE, page * PAGE_SIZE - 1)
     const { data, count } = await q
     setList(data || []); setTotal(count || 0); setLoading(false)
-  }, [db, masjidId, search, filterHari, page])
+  }, [db, search, filterHari, page])
 
   useEffect(() => { if (ready) fetchList() }, [fetchList, ready])
 
   const handleDelete = async (id) => {
     if (!confirm('Yakin hapus data ini?')) return
-    const { error } = await db.from('muzaki').delete().eq('id', id).eq('masjid_id', masjidId)
+    const { error } = await db.from('muzaki').delete().eq('id', id)
     if (error) toast.error('Gagal menghapus data')
     else { toast.success('Data berhasil dihapus'); fetchList() }
   }
 
   const handleExport = async () => {
     const tid = toast.loading('Menyiapkan PDF...')
-    const { data: all } = await db.from('muzaki').select('*').eq('masjid_id', masjidId).order('hari_ke').order('created_at')
-    const { data: pg }  = await db.from('pengaturan').select('*').eq('masjid_id', masjidId).single()
+    const { data: all } = await db.from('muzaki').select('*').order('hari_ke').order('created_at')
+    const { data: pg }  = await db.from('pengaturan').select('*').single()
     if (all && pg) { await exportMuzakiToPDF(all, pg); toast.success('PDF berhasil!', { id: tid }) }
     else toast.error('Gagal export', { id: tid })
   }
@@ -167,10 +167,10 @@ function MuzakiModal({data,pengaturan,db,onClose,onSuccess}){
   const totalJiwa=parseInt(form.jumlah_jiwa)||1; const sisaZakat=totalJiwa-(parseInt(jiwaUang)||0)-(parseInt(jiwaBeras)||0)
   const zakatUang=(parseInt(jiwaUang)||0)*up; const zakatBeras=(parseInt(jiwaBeras)||0)*bp; const infakWajib=(parseInt(jiwaInfak)||0)*ip
   const jenisBayar=(()=>{const u=parseInt(jiwaUang)||0,b=parseInt(jiwaBeras)||0;if(u>0&&b>0)return'keduanya';if(b>0)return'beras';return'uang'})()
-  const handleJiwaChange=v=>{const n=parseInt(v)||1;setForm(f=>({...f,jumlah_jiwa:n}));setJiwaUang(n);setJiwaBeras(0);setJiwaInfak(n)}
-  const clampU=v=>{const u=Math.max(0,Math.min(parseInt(v)||0,totalJiwa));setJiwaUang(u);setJiwaBeras(prev=>Math.max(0,Math.min(parseInt(prev)||0,totalJiwa-u)))}
-  const clampB=v=>{const b=Math.max(0,Math.min(parseInt(v)||0,totalJiwa));setJiwaBeras(b);setJiwaUang(prev=>Math.max(0,Math.min(parseInt(prev)||0,totalJiwa-b)))}
-  const clampI=v=>setJiwaInfak(Math.max(0,Math.min(parseInt(v)||0,totalJiwa)))
+  const handleJiwaChange=v=>{setForm(f=>({...f,jumlah_jiwa:v}));const n=parseInt(v)||1;setJiwaUang(n);setJiwaBeras(0);setJiwaInfak(n)}
+  const clampU=v=>{if(v===''||v===null){setJiwaUang('');return};const u=Math.max(0,Math.min(parseInt(v)||0,totalJiwa));setJiwaUang(u);setJiwaBeras(prev=>Math.max(0,Math.min(parseInt(prev)||0,totalJiwa-u)))}
+  const clampB=v=>{if(v===''||v===null){setJiwaBeras('');return};const b=Math.max(0,Math.min(parseInt(v)||0,totalJiwa));setJiwaBeras(b);setJiwaUang(prev=>Math.max(0,Math.min(parseInt(prev)||0,totalJiwa-b)))}
+  const clampI=v=>{if(v===''||v===null){setJiwaInfak('');return};setJiwaInfak(Math.max(0,Math.min(parseInt(v)||0,totalJiwa)))}
   const handleSubmit=async()=>{
     if(!form.nama_kepala_keluarga.trim()){toast.error('Nama wajib diisi');return}
     const u=parseInt(jiwaUang)||0,b=parseInt(jiwaBeras)||0
@@ -192,7 +192,7 @@ function MuzakiModal({data,pengaturan,db,onClose,onSuccess}){
         <div className="grid grid-cols-2 gap-3">
           <div className="col-span-2"><label className="label">Nama Kepala Keluarga *</label><input className="input" value={form.nama_kepala_keluarga} onChange={e=>set('nama_kepala_keluarga',e.target.value)} placeholder="Nama lengkap..."/></div>
           <div><label className="label">No. KK</label><input className="input font-mono" value={form.no_kk} onChange={e=>set('no_kk',e.target.value)} placeholder="3211..."/></div>
-          <div><label className="label">Jumlah Jiwa *</label><input type="number" min={1} className="input font-bold text-primary-600 dark:text-primary-400" value={form.jumlah_jiwa} onChange={e=>handleJiwaChange(e.target.value)}/></div>
+          <div><label className="label">Jumlah Jiwa *</label><input type="text" inputMode="numeric" pattern="[0-9]*" className="input font-bold text-primary-600 dark:text-primary-400" value={form.jumlah_jiwa} onChange={e=>handleJiwaChange(e.target.value.replace(/[^0-9]/g,""))} onBlur={e=>{const n=parseInt(e.target.value)||1;setForm(f=>({...f,jumlah_jiwa:n}));setJiwaUang(n);setJiwaBeras(0);setJiwaInfak(n)}}/></div>
           <div><label className="label">RT</label><input className="input" value={form.rt} onChange={e=>set('rt',e.target.value)} placeholder="001"/></div>
           <div><label className="label">RW</label><input className="input" value={form.rw} onChange={e=>set('rw',e.target.value)} placeholder="002"/></div>
           <div className="col-span-2"><label className="label">Anggota Keluarga (1 baris = 1 nama)</label><textarea className="input min-h-[72px] resize-none text-sm" value={form.anggota_keluarga} onChange={e=>set('anggota_keluarga',e.target.value)} placeholder={"Anggota 1\nAnggota 2"}/></div>
@@ -205,8 +205,8 @@ function MuzakiModal({data,pengaturan,db,onClose,onSuccess}){
           </div>
           {totalJiwa>0&&<div className="h-2.5 rounded-full overflow-hidden bg-stone-200 dark:bg-stone-700 flex gap-px">{(parseInt(jiwaUang)||0)>0&&<div className="bg-primary-500 transition-all" style={{width:`${((parseInt(jiwaUang)||0)/totalJiwa)*100}%`}}/>}{(parseInt(jiwaBeras)||0)>0&&<div className="bg-gold-500 transition-all" style={{width:`${((parseInt(jiwaBeras)||0)/totalJiwa)*100}%`}}/>}</div>}
           <div className="grid grid-cols-2 gap-3">
-            <div><label className="label flex items-center gap-1"><Banknote className="w-3 h-3 text-primary-600"/>Jiwa Bayar Uang</label><input type="number" min={0} max={totalJiwa} className="input font-bold text-primary-700 dark:text-primary-400" value={jiwaUang} onChange={e=>clampU(e.target.value)}/><p className="text-[10px] text-stone-400 mt-1">{parseInt(jiwaUang)||0}×Rp{up.toLocaleString('id')} = <strong className="text-primary-600">{formatRupiah(zakatUang)}</strong></p></div>
-            <div><label className="label flex items-center gap-1"><Wheat className="w-3 h-3 text-gold-600"/>Jiwa Bayar Beras</label><input type="number" min={0} max={totalJiwa} className="input font-bold text-gold-700 dark:text-gold-400" value={jiwaBeras} onChange={e=>clampB(e.target.value)}/><p className="text-[10px] text-stone-400 mt-1">{parseInt(jiwaBeras)||0}×{bp}kg = <strong className="text-gold-600">{zakatBeras.toFixed(2)}kg</strong></p></div>
+            <div><label className="label flex items-center gap-1"><Banknote className="w-3 h-3 text-primary-600"/>Jiwa Bayar Uang</label><input type="text" inputMode="numeric" pattern="[0-9]*" className="input font-bold text-primary-700 dark:text-primary-400" value={jiwaUang} onChange={e=>clampU(e.target.value.replace(/[^0-9]/g,""))} onBlur={e=>{if(e.target.value==="")clampU("0")}}/><p className="text-[10px] text-stone-400 mt-1">{parseInt(jiwaUang)||0}×Rp{up.toLocaleString('id')} = <strong className="text-primary-600">{formatRupiah(zakatUang)}</strong></p></div>
+            <div><label className="label flex items-center gap-1"><Wheat className="w-3 h-3 text-gold-600"/>Jiwa Bayar Beras</label><input type="text" inputMode="numeric" pattern="[0-9]*" className="input font-bold text-gold-700 dark:text-gold-400" value={jiwaBeras} onChange={e=>clampB(e.target.value.replace(/[^0-9]/g,""))} onBlur={e=>{if(e.target.value==="")clampB("0")}}/><p className="text-[10px] text-stone-400 mt-1">{parseInt(jiwaBeras)||0}×{bp}kg = <strong className="text-gold-600">{zakatBeras.toFixed(2)}kg</strong></p></div>
           </div>
           <div className="flex gap-2">
             <button onClick={()=>{setJiwaUang(totalJiwa);setJiwaBeras(0)}} className={cn('flex-1 py-1.5 rounded-xl text-xs font-semibold border-2 transition-all',jiwaUang===totalJiwa&&jiwaBeras===0?'border-primary-500 bg-primary-100 dark:bg-primary-950 text-primary-700':'border-stone-200 dark:border-[#1e3d2a] text-stone-500')}>💰 Semua Uang</button>
@@ -216,7 +216,7 @@ function MuzakiModal({data,pengaturan,db,onClose,onSuccess}){
         <Divider>Infak Wajib</Divider>
         <div className="bg-blue-50 dark:bg-blue-950/20 rounded-2xl p-4 space-y-3 border border-blue-100 dark:border-blue-900">
           <p className="text-xs text-blue-600 font-medium flex items-center gap-1.5"><HandCoins className="w-3.5 h-3.5"/>@Rp{ip.toLocaleString('id')}/jiwa</p>
-          <div><label className="label">Jiwa yang Infak</label><input type="number" min={0} max={totalJiwa} className="input font-bold text-blue-700 dark:text-blue-400" value={jiwaInfak} onChange={e=>clampI(e.target.value)}/><p className="text-[10px] text-stone-400 mt-1">{parseInt(jiwaInfak)||0}×Rp{ip.toLocaleString('id')} = <strong className="text-blue-600">{formatRupiah(infakWajib)}</strong></p></div>
+          <div><label className="label">Jiwa yang Infak</label><input type="text" inputMode="numeric" pattern="[0-9]*" className="input font-bold text-blue-700 dark:text-blue-400" value={jiwaInfak} onChange={e=>clampI(e.target.value.replace(/[^0-9]/g,""))} onBlur={e=>{if(e.target.value==="")clampI("0")}}/><p className="text-[10px] text-stone-400 mt-1">{parseInt(jiwaInfak)||0}×Rp{ip.toLocaleString('id')} = <strong className="text-blue-600">{formatRupiah(infakWajib)}</strong></p></div>
           <div><label className="label">Infak Tambahan (Rp)</label><input type="number" min={0} className="input" value={form.infak_tambahan} onChange={e=>set('infak_tambahan',e.target.value)}/></div>
         </div>
         <Divider>Shodaqoh Tambahan</Divider>
